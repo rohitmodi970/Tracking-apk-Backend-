@@ -8,7 +8,7 @@ This project consists of a **React Native (Expo)** frontend and a **Node.js (Exp
 
 ### 1️⃣ Clone the Repository  
 ```sh
-git clone https://github.com/rohitmodi970/Tracking-apk-React-native-.git
+[git clone https://github.com/rohitmodi970/Tracking-apk-Backend-.git]
 cd your-repo-folder
 ```
 
