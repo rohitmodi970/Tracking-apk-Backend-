@@ -1,5 +1,14 @@
 const express = require("express");
+const cors = require("cors");
 const app = express();
+
+
+// ✅ Allow frontend to communicate with backend
+app.use(cors({
+    origin: "*",  // Allows all origins (Change to your frontend URL in production)
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true
+}));
 
 const mongoose = require("mongoose")
 app.use(express.json())
@@ -9,6 +18,10 @@ require('dotenv').config();
 const mongoUrl = process.env.MONGODB_URI;
 const jwt = require('jsonwebtoken')//it will help us to generate a token each and every time when user register and that token will be unique and that token will contain the user data in the encrypted format
 const JWT_SECRET = "ksjdbfkjsadbnflkjqbedfiu2rt7rgkjhsdfiog8iy21q30rjrolkj*^&^$%ifgh21q938e831e4ru8e0934r8t098r5utg8345y89^&%#***Ugxxhcasdf2430r5428905t6712-03`=1233-`13d";
+
+app.get("/test", (req, res) => {
+    res.json({ message: "CORS is working!" });
+});
 
 mongoose
     .connect(mongoUrl)
