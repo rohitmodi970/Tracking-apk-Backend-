@@ -17,7 +17,7 @@ mongoose
     }).catch((e) => {
         console.log(e)
     })
-require('./UserDetails')
+require('./models/UserDetails')
 const User = mongoose.model("UserDetails")
 app.get("/", (req, res) => {
     res.send({ status: "Started" });
@@ -120,7 +120,7 @@ mongoose
     }).catch((e) => {
         console.log(e)
     })
-require('./Location',)
+require('./models/Location',)
 
 
 const Location = mongoose.model("Location");
