@@ -82,8 +82,7 @@ app.post("/login-user", async (req, res) => {
         if (!isMatch) {
             return res.status(401).send({ message: "Invalid credentials" });
         }
-
-        const token = jwt.sign({ email: oldUser.email }, JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ email: oldUser.email }, JWT_SECRET);
 
         return res.status(201).send({ status: "ok", data: token, userType: oldUser.userType });
     } catch (error) {
