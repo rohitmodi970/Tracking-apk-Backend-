@@ -356,7 +356,7 @@ mongoose
         { upsert: true, new: true }
       );
   
-      console.log(`Battery status updated for user ${user.userId}: ${batteryLevel}%, Charging: ${isCharging}`);
+      // console.log(`Battery status updated for user ${user.userId}: ${batteryLevel}%, Charging: ${isCharging}`);
       
       res.json({ 
         success: true, 
