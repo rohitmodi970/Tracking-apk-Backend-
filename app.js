@@ -86,7 +86,7 @@ app.post("/login-user", async (req, res) => {
 
         return res.status(201).send({ status: "ok", data: token, userType: oldUser.userType });
     } catch (error) {
-        console.error("Login error:", error);
+        // console.error("Login error:", error);
         return res.status(500).send({ message: "Internal Server Error" });
     }
 });
@@ -101,10 +101,10 @@ app.post("/userdata", async (req, res) => {
         // Verify token and extract user email
         const user = jwt.verify(token, JWT_SECRET);
         const useremail = user.email;
-        console.log(useremail)
+        // console.log(useremail)
         // Find user in database
         const userData = await User.findOne({ email: useremail }).select("-password"); // Exclude password
-        console.log(userData)
+        // console.log(userData)
         if (!userData) {
             return res.status(404).json({ status: "error", data: "User not found" });
         }
@@ -136,94 +136,154 @@ require('./models/Location',)
 
 
 const Location = mongoose.model("Location");
-
-// API to update user location
+//this will store the location of the user in the database of time interval inluding lastest one and time gap of 10 min,30 min,1 hour,6 hour,12 hour and 1 day
+// Update to the update-location endpoint to manage isActive
 app.post("/update-location", async (req, res) => {
     try {
-        const { token, latitude, longitude } = req.body;
-
-        if (!token || latitude === undefined || longitude === undefined) {
-            return res.status(400).json({ status: "error", message: "Missing required fields" });
-        }
-
-        // Verify user from token
-        const user = jwt.verify(token, JWT_SECRET);
-        const userEmail = user.email;
-
-        // Get user details
-        const userData = await User.findOne({ email: userEmail });
-        if (!userData) {
-            return res.status(404).json({ status: "error", message: "User not found" });
-        }
-
-        // Only users with userType='User' can share location
-        if (userData.userType !== 'User') {
-            return res.status(403).json({
-                status: "error",
-                message: "Only users with 'User' role can share location"
-            });
-        }
-
-        // Update or create location entry
-        const locationUpdate = await Location.findOneAndUpdate(
-            { userId: userData._id },
-            {
-                userId: userData._id,
-                userName: userData.name,
-                latitude,
-                longitude,
-                timestamp: new Date(),
-                isActive: true
-            },
-            { upsert: true, new: true }
-        );
-
-        return res.status(200).json({
-            status: "ok",
-            message: "Location updated successfully",
-            data: locationUpdate
+      const { token, latitude, longitude, isActive = true } = req.body;
+      
+      if (!token || latitude === undefined || longitude === undefined) {
+        return res.status(400).json({ status: "error", message: "Missing required fields" });
+      }
+      
+      // Verify user from token
+      const user = jwt.verify(token, JWT_SECRET);
+      const userEmail = user.email;
+      
+      // Get user details
+      const userData = await User.findOne({ email: userEmail });
+      if (!userData) {
+        return res.status(404).json({ status: "error", message: "User not found" });
+      }
+      
+      // Only users with userType='User' can share location
+      if (userData.userType !== 'User') {
+        return res.status(403).json({
+          status: "error",
+          message: "Only users with 'User' role can share location"
         });
+      }
+      
+      const currentTime = new Date();
+      const newLocation = {
+        latitude,
+        longitude,
+        timestamp: currentTime
+      };
+      
+      // Find or create user's location document
+      let userLocation = await Location.findOne({ userId: userData.userId });
+      let isNewRecord = false;
+      
+      if (!userLocation) {
+        // Initialize new document
+        userLocation = new Location({
+          userId: userData.userId,
+          userName: userData.name,
+          isActive: isActive,
+          currentLocation: newLocation,
+          intervals: {
+            tenMinutes: newLocation,
+            thirtyMinutes: newLocation,
+            oneHour: newLocation,
+            sixHours: newLocation,
+            twelveHours: newLocation,
+            oneDay: newLocation
+          },
+          lastUpdated: currentTime
+        });
+        isNewRecord = true;
+      } else {
+        // Update current location, username, and active status
+        userLocation.currentLocation = newLocation;
+        userLocation.userName = userData.name;
+        userLocation.isActive = isActive;
+        
+        // Check and update each interval if enough time has passed
+        const intervals = [
+          { name: 'tenMinutes', milliseconds: 10 * 60 * 1000 },
+          { name: 'thirtyMinutes', milliseconds: 30 * 60 * 1000 },
+          { name: 'oneHour', milliseconds: 60 * 60 * 1000 },
+          { name: 'sixHours', milliseconds: 6 * 60 * 60 * 1000 },
+          { name: 'twelveHours', milliseconds: 12 * 60 * 60 * 1000 },
+          { name: 'oneDay', milliseconds: 24 * 60 * 60 * 1000 }
+        ];
+        
+        intervals.forEach(interval => {
+          const lastUpdate = userLocation.intervals[interval.name]?.timestamp || new Date(0);
+          if (currentTime - new Date(lastUpdate) >= interval.milliseconds) {
+            userLocation.intervals[interval.name] = newLocation;
+          }
+        });
+      }
+      
+      userLocation.lastUpdated = currentTime;
+      await userLocation.save();
+      
+      return res.status(200).json({
+        status: "ok",
+        message: isNewRecord ? "Location created successfully" : "Location updated successfully",
+        data: userLocation
+      });
     } catch (error) {
-        console.error("Location update error:", error);
-        return res.status(500).json({ status: "error", message: error.message });
+      console.error("Location update error:", error);
+      return res.status(500).json({ status: "error", message: error.message });
     }
-});
+  });
+  
 
-// API to get all active user locations (for admin)
+
+// Backend API endpoint to get all active users' current locations
 app.post("/get-all-locations", async (req, res) => {
     try {
-        const { token } = req.body;
-
-        if (!token) {
-            return res.status(400).json({ status: "error", message: "Token is required" });
-        }
-
-        // Verify admin from token
-        const user = jwt.verify(token, JWT_SECRET);
-        const userEmail = user.email;
-
-        // Verify user is admin
-        const userData = await User.findOne({ email: userEmail });
-        if (!userData || userData.userType !== 'Admin') {
-            return res.status(403).json({
-                status: "error",
-                message: "Access denied. Admin privileges required"
-            });
-        }
-
-        // Get all active locations
-        const allLocations = await Location.find({ isActive: true })
-            .sort({ timestamp: -1 });
-
-        return res.status(200).json({
-            status: "ok",
-            data: allLocations
+      const { token } = req.body;
+      
+      if (!token) {
+        return res.status(400).json({ status: "error", message: "Token is required" });
+      }
+      
+      // Verify admin from token
+      const user = jwt.verify(token, JWT_SECRET);
+      const userEmail = user.email;
+      
+      // Verify user is admin
+      const userData = await User.findOne({ email: userEmail });
+      if (!userData || userData.userType !== 'Admin') {
+        return res.status(403).json({
+          status: "error",
+          message: "Access denied. Admin privileges required"
         });
+      }
+      
+      // Get all active users' current locations only
+      const activeLocations = await Location.find({ isActive: true })
+        .select({
+          userId: 1,
+          userName: 1,
+          currentLocation: 1,
+          lastUpdated: 1
+        })
+        .sort({ lastUpdated: -1 });
+      
+      // Format the response to provide just the current location data
+      const formattedLocations = activeLocations.map(loc => ({
+        userId: loc.userId,
+        userName: loc.userName,
+        latitude: loc.currentLocation.latitude,
+        longitude: loc.currentLocation.longitude,
+        timestamp: loc.currentLocation.timestamp,
+        lastUpdated: loc.lastUpdated
+      }));
+      
+      return res.status(200).json({
+        status: "ok",
+        data: formattedLocations
+      });
     } catch (error) {
-        console.error("Get locations error:", error);
-        return res.status(500).json({ status: "error", message: error.message });
+      console.error("Get locations error:", error);
+      return res.status(500).json({ status: "error", message: error.message });
     }
-});
+  });
 
 // API to stop sharing location
 app.post("/stop-location-sharing", async (req, res) => {
@@ -259,3 +319,113 @@ app.post("/stop-location-sharing", async (req, res) => {
         return res.status(500).json({ status: "error", message: error.message });
     }
 });
+const BatteryStatus = require("./models/UserBattery");
+
+mongoose
+  .connect(mongoUrl)
+  .then(() => console.log("Battery db connected"))
+  .catch((e) => console.log(e));
+
+  app.post("/updateBatteryStatus", async (req, res) => {
+    const { token, batteryLevel, isCharging } = req.body;
+    // console.log(token);
+    // console.log(req.body);
+    
+    try {
+      // Decode JWT token to get user info
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const user = await User.findOne({ email: decoded.email });
+  
+      if (!user) {
+        return res.status(401).json({ error: "Invalid user" });
+      }
+  
+      // Only update if userType is "user" (case insensitive)
+      if (user.userType.toLowerCase() !== "user") {
+        return res.status(403).json({ error: "Only standard users can update battery status" });
+      }
+  
+      // Update BatteryStatus model
+      await BatteryStatus.findOneAndUpdate(
+        { userId: user.userId },
+        { 
+          level: batteryLevel, 
+          isCharging: isCharging,
+          updatedAt: new Date() 
+        },
+        { upsert: true, new: true }
+      );
+  
+      console.log(`Battery status updated for user ${user.userId}: ${batteryLevel}%, Charging: ${isCharging}`);
+      
+      res.json({ 
+        success: true, 
+        message: "Battery status updated successfully" 
+      });
+    } catch (error) {
+      console.error("Error updating battery status:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+
+
+  app.post("/fetchAllUsers", async (req, res) => {
+    const { token } = req.body;
+  
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const adminUser = await User.findOne({ email: decoded.email });
+  
+      if (!adminUser || adminUser.userType.toLowerCase() !== "admin") {
+        return res.status(403).json({ error: "Only admin users can fetch all users" });
+      }
+  
+      // Fetch all users with `isActive` status
+      const users = await User.find({}, "name email mobile userType isActive"); 
+  
+      res.json({ success: true, data: users });
+    } catch (error) {
+      console.error("Error fetching all users:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+  
+  app.post(`/user/mobile`, async (req, res) => {
+    const { token, mobile } = req.body;
+    
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const adminUser = await User.findOne({ email: decoded.email });
+    
+      if (!adminUser || adminUser.userType.toLowerCase() !== "admin") {
+      return res.status(403).json({ error: "Only admin users can fetch all users" });
+      }
+      const userData = await User.findOne({
+      mobile: mobile
+      });
+      if (!userData) {
+      return res.status(404).json({ error: "User not found" });
+      }
+      const locationData = await Location.findOne({
+      userId: userData.userId
+      });
+      const batteryData = await BatteryStatus.findOne({
+      userId: userData.userId
+      });
+
+      // Decrypt the password
+      // const decryptedPassword = await bcrypt.compare(userData.password, userData.password);
+      const decryptedPassword = await bcrypt.decodeBase64(userData.password);
+
+      // console.log("User data:", userData);
+      // console.log("Location data:", locationData);
+      // console.log("Battery data:", batteryData);
+      // console.log("Decrypted password:", decryptedPassword);
+      // res.json({ success: true, data: { userData, locationData, batteryData, decryptedPassword } });
+      res.json({ success: true, data: { userData, locationData, batteryData } });
+    } catch (error) {
+      console.error("Error fetching user by mobile:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
