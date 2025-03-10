@@ -117,7 +117,38 @@ app.post("/userdata", async (req, res) => {
     }
 })
 
+app.post("/update-user", async (req, res) => {
+  const { token, name, email, mobile, password } = req.body;
 
+  try {
+      if (!token) {
+          return res.status(400).json({ status: "error", message: "Token is required" });
+      }
+
+      // Verify token and extract user email
+      const user = jwt.verify(token, JWT_SECRET);
+      const useremail = user.email;
+
+      // Find user in database
+      const userData = await User.findOne({ email: useremail });
+      if (!userData) {
+          return res.status(404).json({ status: "error", message: "User not found" });
+      }
+
+      // Update fields if provided on the userData object (not the user object)
+      if (name) userData.name = name;
+      if (email) userData.email = email; // Note: Changing email might need additional validation
+      if (mobile) userData.mobile = mobile;
+      if (password) userData.password = await bcrypt.hash(password, 10);
+      
+      await userData.save();
+console.log("User updated successfully")
+      return res.status(200).json({ status: "ok", message: "User updated successfully" });
+
+  } catch (error) {
+      return res.status(500).json({ error: error.message });
+  }
+});
 
 
 app.listen(5001, () => {
@@ -382,9 +413,10 @@ mongoose
       }
   
       // Fetch all users with `isActive` status
-      const users = await User.find({}, "name email mobile userType isActive"); 
-  
-      res.json({ success: true, data: users });
+      const users = await User.find({}, "name email mobile userType isActive userId"); 
+      const isactive = await Location.find({}, "isActive userId");
+      console.log("All users' isActive status:", isactive);
+      res.json({ success: true, data: { users, isactive } });
     } catch (error) {
       console.error("Error fetching all users:", error);
       res.status(500).json({ error: "Server error" });
@@ -429,3 +461,32 @@ mongoose
       res.status(500).json({ error: "Server error" });
     }
   });
+
+  app.post('/user-counts', async (req, res) => {
+    const { token } = req.body;
+    
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const adminUser = await User.findOne({ email: decoded.email });
+    
+      if (!adminUser || adminUser.userType.toLowerCase() !== "admin") {
+      return res.status(403).json({ error: "Only admin users can fetch user counts" });
+      }
+    
+      const totalUsers = await User.countDocuments();
+      const activeUsers = await Location.find({ isActive: true }).select('userName');
+      const inactiveUsers = await Location.countDocuments({ isActive: false });
+    
+      res.json({ 
+      success: true, 
+      data: { 
+        totalUsers, 
+        activeUsers: activeUsers.map(user => user.userName), 
+        inactiveUsers 
+      } 
+      });
+    } catch (error) {
+      console.error("Error fetching user counts:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+    });
